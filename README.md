@@ -1,125 +1,128 @@
 # SPK Rekomendasi Kegiatan Mahasiswa
 
-Sistem pendukung keputusan (SPK) yang merekomendasikan kegiatan mahasiswa berdasarkan profil
-akademik, organisasi, skill, komunikasi, dan kebutuhan finansial. Metode yang dipakai adalah
-**SMARTER + SAW**, lalu hasilnya ditiru oleh model **Random Forest** dan disajikan lewat
-aplikasi web **Streamlit**.
+Sistem Pendukung Keputusan (SPK) yang merekomendasikan kegiatan mahasiswa di luar perkuliahan berdasarkan profil akademik, komitmen akademik, keterlibatan organisasi, kemampuan komunikasi, keterampilan/prestasi, dan kebutuhan finansial. Metode keputusan yang digunakan adalah **SMARTER (ROC) + SAW (Profile Matching)**, lalu hasilnya dipelajari oleh model **Random Forest** dan disajikan melalui aplikasi web **Streamlit**.
 
-Proyek mata kuliah Data Mining (Kelompok 12), metodologi CRISP-DM.
+Proyek mata kuliah Data Mining (Kelompok 12), menggunakan metodologi **CRISP-DM**.
 
-> Aplikasi ini alat bantu berbasis tugas akademik, bukan keputusan final.
+> Aplikasi ini merupakan alat bantu pengambilan keputusan berbasis tugas akademik, bukan keputusan mutlak. Keputusan akhir tetap berada pada mahasiswa.
 
-## Alternatif kegiatan
+## Daftar Alternatif Kegiatan
 
-1. Organisasi & Kepemimpinan
-2. Volunteer & Sosial
-3. UKM
-4. Fokus Kuliah Saja
-5. Kuliah sambil Kerja Part-Time
-6. Kuliah sambil Kerja Full-Time
-7. Ikut Lomba
+1. **A1** – Organisasi & Kepemimpinan
+2. **A2** – Volunteer & Sosial
+3. **A3** – Unit Kegiatan Mahasiswa (UKM)
+4. **A4** – Fokus Kuliah Saja
+5. **A5** – Kuliah sambil Kerja Part-Time
+6. **A6** – Kuliah sambil Kerja Full-Time
+7. **A7** – Ikut Lomba
 
-## Kriteria
+## Kriteria Keputusan & Pembentukan Indeks
 
-| Kode | Kriteria | Indeks di dataset |
-|---|---|---|
-| K1 | Performa akademik | `academic_performance_index` |
-| K2 | Komitmen akademik | `academic_commitment_index` |
-| K3 | Keterlibatan organisasi | `organizational_engagement_index` |
-| K4 | Kemampuan komunikasi | `communication_profile_index` |
-| K5 | Skill / prestasi | `career_skill_index` |
-| K6 | Kebutuhan finansial | `financial_need_index` |
+| Kode | Kriteria | Indeks pada Dataset | Komponen Data Mentah | Prioritas SMARTER | Bobot ROC |
+|---|---|---|---|---|---|
+| **K1** | Performa akademik | `academic_performance_index` | `high_school_gpa`, `sat_score`, `act_score`, `attendance_rate` | 2 | 0,2417 |
+| **K2** | Komitmen akademik | `academic_commitment_index` | `high_school_gpa`, `attendance_rate`, `ap_courses` | 6 | 0,0278 |
+| **K3** | Keterlibatan organisasi | `organizational_engagement_index` | `extracurricular_count`, `volunteer_hours`, `leadership_positions` | 4 | 0,1028 |
+| **K4** | Kemampuan komunikasi | `communication_profile_index` | `essay_score`, `recommendation_score`, `interview_score` | 5 | 0,0611 |
+| **K5** | Skill / prestasi | `career_skill_index` | `coding_projects`, `online_certifications` | 1 | 0,4083 |
+| **K6** | Kebutuhan finansial | `financial_need_index` | `family_income` $\rightarrow$ `relative_income` (`1 - MinMax`) | 3 | 0,1583 |
 
-Setiap indeks adalah rata-rata nilai Min-Max dari komponen datanya. `financial_need_index`
-adalah 1 dikurangi Min-Max pendapatan keluarga yang sudah di-winsorize dengan IQR.
+Setiap indeks pada **K1–K5** merupakan rata-rata nilai normalisasi Min-Max dari komponen atribut mentahnya. Khusus **K6 (`financial_need_index`)**, pendapatan keluarga ditransformasikan terlebih dahulu menjadi **`relative_income`** lalu dihitung dengan rumus `1 - MinMax(relative_income)`.
 
-## Cara kerja
+## Adaptasi Pendapatan Rupiah melalui `relative_income`
 
-1. **Profil kebutuhan kegiatan.** Setiap kegiatan punya tingkat kebutuhan (skala 1-5, lalu dibagi 5)
-   terhadap K1-K6. Matriks ini adalah penilaian penyusun berdasarkan arah literatur, bukan angka
-   yang dilaporkan sumber mana pun, dan perlu divalidasi.
-2. **Bobot SMARTER (ROC).** Urutan prioritas: K5, K1, K6, K3, K4, K2. Bobot dihitung dengan
-   Rank Order Centroid (n = 6).
-3. **Posisi relatif (persentil).** Nilai indeks mahasiswa diubah menjadi persentil terhadap seluruh
-   mahasiswa di dataset, agar skalanya sebanding dengan skala kebutuhan kegiatan.
-4. **Kecocokan dan SAW.** `Kecocokan = 1 - |nilai mahasiswa - kebutuhan kegiatan|`, lalu skor akhir
-   `V = Σ (bobot × kecocokan)`. Kegiatan dengan skor tertinggi menjadi label rekomendasi.
-5. **Random Forest.** Model dilatih untuk memprediksi label SAW dari enam indeks. Persentil tidak
-   memengaruhi pohon keputusan, sehingga model memakai indeks mentah sebagai fitur.
-6. **Aplikasi.** Pengguna mengisi data mentah, aplikasi menghitung enam indeks dengan rumus yang
-   sama dengan data preparation, lalu menampilkan rekomendasi Random Forest beserta penjelasan
-   SAW langsung.
+Dataset latih (`genz_college_admission_prediction.csv`) berasal dari konteks mahasiswa Amerika Serikat yang mencatat `family_income` sebagai pendapatan tahunan dalam USD (rentang setelah *winsorizing* IQR: **$2.124** hingga **$164.290,5**, median **$71.701**). Agar aplikasi dapat langsung digunakan oleh mahasiswa Indonesia dengan satuan **Rupiah per bulan (Rp/bulan)** tanpa terdistorsi oleh kurs nominal mata uang, sistem menggunakan fitur **`relative_income`**:
 
-## Struktur file
+1. **Konsep Rasio Bebas Satuan (`relative_income`)**:
+   Pendapatan keluarga dinyatakan sebagai rasio terhadap pendapatan acuan (*reference income*) di negara masing-masing:
+   $$\text{relative\_income} = \frac{\text{Pendapatan Keluarga}}{\text{Reference Income}}$$
+   * **Pada dataset AS (USD/tahun)**: $\text{Reference Income}_{\text{USD}} = \$83.730\text{/tahun}$, menghasilkan rentang *winsorized* $\text{relative\_income} \in [0,0254,\ 1,9621]$ dengan median $0,8563$.
+   * **Pada aplikasi untuk pengguna Indonesia (Rp/bulan)**: Pengguna cukup mengisi pendapatan orang tua/keluarga per bulan dalam Rupiah, lalu dibagi dengan $\text{Reference Income}_{\text{IDR, bulanan}}$ (*default* **Rp 10.000.000/bulan**, dapat disesuaikan di menu pengaturan aplikasi).
+2. **Konsistensi Perhitungan Bulanan vs Tahunan**:
+   Karena `relative_income` adalah rasio, pembagian dengan pendapatan bulanan menghasilkan nilai yang **sama persis** dengan pembagian pendapatan tahunan:
+   $$\frac{\text{Pendapatan Bulanan (Rp)} \times 12}{\text{Acuan Bulanan (Rp)} \times 12} = \frac{\text{Pendapatan Bulanan (Rp)}}{\text{Acuan Bulanan (Rp)}}$$
+3. **Normalisasi ke `financial_need_index` (K6)**:
+   Nilai `relative_income` pengguna dibatasi (*winsorized*) pada rentang $[0,0254,\ 1,9621]$ lalu dinormalisasi dengan Min-Max dan dibalik:
+   $$\text{financial\_need\_index} = 1 - \text{clip}\left(\frac{\text{relative\_income} - 0,0254}{1,9621 - 0,0254},\ 0,\ 1\right)$$
+   Dengan acuan *default* Rp 10.000.000/bulan, rentang efektif pendapatan keluarga adalah **Rp 253.672/bulan** (`financial_need_index = 1,000`) hingga **Rp 19.621.462/bulan** (`financial_need_index = 0,000`), dengan titik median setara **Rp 8.563.358/bulan** (`financial_need_index = 0,571`).
 
-| File | Fungsi |
+## Alur Kerja Sistem
+
+1. **Pra-pemrosesan & Feature Engineering (`Data Transformasi dan Feature Engineering.py`)**: Memeriksa *missing value*, mendeteksi *outlier* dengan IQR, melakukan *winsorizing* pada `family_income`, menghitung `relative_income`, melakukan *One-Hot Encoding* dan normalisasi Min-Max, serta membentuk 6 indeks kriteria.
+2. **Pemodelan Keputusan SMARTER + SAW (`modelingv2.py`)**:
+   * Menghitung bobot kriteria dengan *Rank Order Centroid* (ROC) berdasarkan urutan prioritas $K_5 > K_1 > K_6 > K_3 > K_4 > K_2$.
+   * Mengubah nilai indeks mahasiswa menjadi posisi relatif (persentil $p_j \in [0, 1]$ terhadap populasi dataset).
+   * Menghitung tingkat kecocokan tiap alternatif kegiatan $c_{ij} = 1 - |p_j - r_{ij}|$ dan skor akhir SAW $V_i = \sum_{j=1}^{6} w_j c_{ij}$ untuk menghasilkan label rekomendasi utama (`recommendation_activities`).
+3. **Pelatihan & Evaluasi Random Forest (`randomforestv2.py` & `evaluasi.py`)**:
+   * Melatih `RandomForestClassifier` menggunakan 6 indeks mentah sebagai fitur ($X$) dan `recommendation_activities` sebagai target ($y$) dengan pembagian data 80:20 *stratified* serta *hyperparameter tuning* (`RandomizedSearchCV` 3-*fold* pada 200.000 sampel).
+   * Menyimpan model terlatih ke dalam `random_forest_rekomendasi.pkl`.
+4. **Aplikasi Web Streamlit (`app.py` & `spk_core.py`)**:
+   * Menerima input 14 data mentah mahasiswa (termasuk opsi melewati skor SAT/ACT dan input pendapatan keluarga dalam **Rp/bulan**).
+   * Menghitung 6 indeks kriteria menggunakan rumus yang identik dengan tahap *data preparation*, memetakan persentil melalui `spk_params.json`, lalu menampilkan 3 rekomendasi teratas dari Random Forest beserta perbandingan skor SAW langsung dan rincian kecocokan per kriteria.
+
+## Struktur File
+
+| Nama File | Fungsi Utama |
 |---|---|
-| `app.py` | Aplikasi Streamlit |
-| `spk_core.py` | Rumus indeks, matriks kebutuhan, bobot ROC (dipakai bersama oleh semua skrip) |
-| `make_params.py` | Membuat `spk_params.json` dari dataset (rentang Min-Max, batas winsorizing, tabel persentil) |
-| `verify_indices.py` | Memastikan perhitungan indeks di aplikasi sama dengan indeks di dataset |
-| `make_requirements.py` | Membuat `requirements.txt` dengan versi library sesuai lingkungan training |
-| `random_forest_rekomendasi.pkl` | Model Random Forest hasil training |
-| `spk_params.json` | Parameter hasil `make_params.py` |
-| `requirements.txt` | Dependensi hasil `make_requirements.py` |
+| `Data Transformasi dan Feature Engineering.py` | Pipeline *data preparation* CRISP-DM: *winsorizing* IQR, pembuatan `relative_income`, normalisasi Min-Max/Z-score, dan pembentukan 6 indeks kriteria |
+| `modelingv2.py` | Perhitungan bobot SMARTER (ROC), matriks kecocokan, dan perankingan SAW pada seluruh dataset untuk menghasilkan `hasil_spk_smarter_saw2.csv` |
+| `randomforestv2.py` | Pelatihan model Random Forest dengan `RandomizedSearchCV` (3-*fold* CV) dan penyimpanan model ke `random_forest_rekomendasi.pkl` |
+| `evaluasi.py` | Evaluasi lengkap Random Forest: *classification report* per kelas, *confusion matrix*, parameter final, dan analisis *gap training vs testing* |
+| `spk_core.py` | Modul inti SPK: konstanta `REFERENCE_INCOME_USD` & `REFERENCE_INCOME_IDR_MONTHLY`, konversi `relative_income`, perhitungan 6 indeks, bobot ROC, dan matriks kebutuhan SAW |
+| `make_params.py` | Menghasilkan `spk_params.json` (rentang Min-Max, batas *winsorizing*, parameter `relative_income`, dan tabel kuantil 1.001 titik) dari dataset |
+| `verify_indices.py` | Memverifikasi bahwa perhitungan 6 indeks di `spk_core.py` menghasilkan angka yang **sama persis** (selisih $< 10^{-6}$) dengan pipeline *data preparation* |
+| `make_requirements.py` | Menghasilkan `requirements.txt` sesuai versi pustaka Python pada lingkungan pelatihan model |
+| `app.py` | Aplikasi web interaktif berbasis Streamlit untuk pengguna akhir (mahasiswa) |
+| `spk_params.json` | File parameter statistik dan kuantil hasil eksekusi `make_params.py` |
+| `random_forest_rekomendasi.pkl` | Paket model Random Forest terlatih beserta daftar fitur dan *hyperparameter* terbaik |
 
-## Menjalankan secara lokal
+## Panduan Menjalankan Secara Lokal
 
-Siapkan satu folder yang berisi semua file di atas, ditambah:
+1. Pastikan folder kerja memuat seluruh skrip di atas beserta dataset:
+   * `genz_college_admission_prediction.csv` (dataset mentah)
+   * `hasil_spk_smarter_saw2.csv` (hasil pelabelan SMARTER + SAW dari `modelingv2.py`)
+2. Jalankan pembuatan parameter dan verifikasi konsistensi indeks:
+   ```bash
+   python make_params.py
+   python verify_indices.py
+   python make_requirements.py
+   ```
+   Pastikan `verify_indices.py` menampilkan `HASIL: SAMA persis (aman dipakai).`
+3. Instal dependensi dan jalankan aplikasi Streamlit:
+   ```bash
+   pip install -r requirements.txt
+   streamlit run app.py
+   ```
 
-- `genz_college_admission_prediction.csv` (dataset mentah)
-- `hasil_spk_smarter_saw2.csv` (hasil SMARTER + SAW dengan kolom indeks)
+## Panduan Deployment (Streamlit Community Cloud)
 
-Lalu jalankan:
+1. Pastikan ukuran `random_forest_rekomendasi.pkl` berada di bawah batas GitHub (100 MB), atau gunakan Git LFS / kompresi `joblib.dump(..., compress=3)`.
+2. Unggah 5 file berikut ke repositori GitHub (tidak perlu mengunggah file CSV berukuran besar):
+   * `app.py`
+   * `spk_core.py`
+   * `spk_params.json`
+   * `random_forest_rekomendasi.pkl`
+   * `requirements.txt`
+3. Hubungkan repositori ke **Streamlit Community Cloud** (`share.streamlit.io`), pilih `app.py` sebagai *entrypoint*, dan samakan versi Python dengan lingkungan pelatihan model.
 
-```
-python make_params.py
-python verify_indices.py
-python make_requirements.py
-pip install -r requirements.txt
-streamlit run app.py
-```
+## Ringkasan Evaluasi Model Random Forest
 
-`verify_indices.py` harus menampilkan "SAMA persis". Jika ada selisih, rumus indeks di aplikasi
-berbeda dari pipeline data preparation dan perlu diperiksa sebelum aplikasi dipakai.
+Evaluasi dilakukan pada 200.000 baris data uji (pembagian 80% *training* : 20% *testing* secara *stratified* dari 1.000.000 data):
 
-## Deployment (Streamlit Community Cloud)
-
-1. Pastikan ukuran `random_forest_rekomendasi.pkl` di bawah 100 MB (batas file GitHub). Jika lebih
-   besar, latih ulang dengan parameter yang lebih kecil (misalnya `max_depth` dan
-   `min_samples_leaf` lebih ketat) atau simpan dengan `joblib.dump(..., compress=3)`.
-2. Unggah ke repo GitHub: `app.py`, `spk_core.py`, `spk_params.json`, `requirements.txt`,
-   dan `random_forest_rekomendasi.pkl`. Jangan unggah CSV berukuran besar.
-3. Buka share.streamlit.io, pilih repo dan `app.py`, lalu deploy. Samakan versi Python dengan yang
-   dipakai saat training.
-
-## Hasil evaluasi Random Forest
-
-Pada data uji 200.000 baris (split 80/20, stratified):
-
-| Metrik | Nilai |
+| Metrik Evaluasi | Nilai |
 |---|---|
-| Accuracy | 0,9883 |
-| Best CV F1 (3-fold, sampel tuning 200.000) | 0,9771 |
+| **Accuracy (Data Uji)** | **98,83%** (`0,9883`) |
+| **Best CV F1-Weighted (3-Fold, 200.000 sampel tuning)** | **0,9771** |
 
-Model meniru label SMARTER + SAW, sehingga metrik ini menunjukkan seberapa baik model menirukan
-rumus tersebut, bukan kualitas rekomendasi itu sendiri. Kualitas rekomendasi bergantung pada
-matriks kebutuhan dan urutan prioritas kriteria.
+Model Random Forest mempelajari aturan pencocokan profil SMARTER + SAW, sehingga metrik di atas mengukur ketepatan model dalam mereplikasi keputusan SPK tanpa harus mengurutkan ulang populasi 1 juta baris setiap kali pengguna baru meminta rekomendasi.
 
-## Keterbatasan
+## Keterbatasan & Catatan Metodologis
 
-- **Matriks kebutuhan dan urutan ROC** adalah keputusan desain penyusun, bukan hasil data.
-  Usulan validasi: analisis sensitivitas urutan ROC dan pemeriksaan beberapa profil contoh oleh
-  dosen atau kakak tingkat.
-- **Persentil bersifat relatif** terhadap populasi dataset, bukan terhadap mahasiswa di kampus tertentu.
-- **Dataset latih** adalah data mahasiswa Amerika. SAT, ACT, AP, dan satuan pendapatan mengikuti
-  dataset tersebut. Aplikasi menyediakan opsi tanpa SAT/ACT, yang menghitung indeks performa
-  akademik dari IPK dan kehadiran saja dan sedikit menyimpang dari data latih.
-- **Tumpang tindih kriteria.** K1 dan K2 sama-sama memuat GPA dan kehadiran.
-- **Ukuran model** dapat menjadi kendala pada hosting gratis.
-- File `.pkl` hanya boleh dimuat dari sumber yang dipercaya.
+* **Matriks kebutuhan alternatif & urutan prioritas ROC**: Ditentukan berdasarkan pertimbangan desain penyusun dan arah literatur, sehingga disarankan untuk diuji lebih lanjut melalui analisis sensitivitas bobot dan validasi pakar (dosen wali/kemahasiswaan).
+* **Adaptasi konteks Indonesia**: Opsi melewati skor SAT/ACT menghitung `academic_performance_index` dari IPK dan kehadiran saja, sedangkan input pendapatan keluarga dalam Rupiah (Rp/bulan) dipetakan melalui rasio `relative_income` terhadap pendapatan acuan bulanan.
+* **Tumpang tindih komponen kriteria**: `high_school_gpa` dan `attendance_rate` digunakan bersama pada K1 (Performa akademik) dan K2 (Komitmen akademik), dengan bobot K2 yang relatif kecil (`0,0278`).
 
-## Anggota kelompok
+## Anggota Kelompok 12
 
-- 412024003 - Christian Melhan
-- 412024004 - Felix Wong
+* **412024003** – Christian Melhan
+* **412024004** – Felix Wong
